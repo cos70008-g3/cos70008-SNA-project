@@ -1,0 +1,471 @@
+# Concept aliases for deduplication.
+#
+# Purpose: collapse surface variants of the same concept ("the food", "good food",
+# "meals") into a single canonical node so PageRank / betweenness / community
+# detection aren't diluted by determiners, plurals, and possessives.
+#
+# Use this file INSTEAD of concept_dictionary.yaml when you want to keep the
+# full lexical breadth of the corpus but clean up duplicates:
+#
+#   python pipeline.py --source combined --neo4j --neo4j-reset \
+#       --concept-dictionary config/concept_aliases.yaml
+#
+# Matching rules (enforced by src/extensions/concept_dictionary.py):
+#   * mode: merge_only  → canonical wins, aliases get absorbed, everything else is kept.
+#   * Matching is exact after lowercase + whitespace collapse. No regex.
+#   * If you want an alias to NOT be dropped, list it as its own canonical.
+#
+# Curated from the actual 1804-concept run on combined policy + yelp data.
+# Top clusters discovered via Neo4j vector search (cosine > 0.90 neighbours).
+
+mode: merge_only
+
+entries:
+  # ── Yelp: core review vocabulary (highest-frequency dupes) ──────────
+  - canonical: food
+    aliases:
+      - the food
+      - good food
+      - great food
+      - amazing food
+      - delicious food
+      - better food
+      - bad food
+      - my food
+      - our food
+      - their food
+      - the foods
+      - foods
+      - fast food
+  - canonical: meal
+    aliases:
+      - the meal
+      - meals
+      - the meals
+      - a meal
+      - our meal
+      - my meal
+      - whole meal
+  - canonical: service
+    aliases:
+      - the service
+      - good service
+      - great service
+      - excellent service
+      - friendly service
+      - better service
+      - bad service
+      - slow service
+      - fast service
+      - our service
+      - their service
+      - customer service
+  - canonical: place
+    aliases:
+      - the place
+      - a place
+      - this place
+      - that place
+      - places
+      - the places
+      - a good place
+      - great place
+      - nice place
+      - cool place
+      - favorite place
+      - favourite place
+      - such a place
+  - canonical: time
+    aliases:
+      - the time
+      - times
+      - the times
+      - a time
+      - first time
+      - last time
+      - next time
+      - every time
+      - this time
+      - that time
+      - my time
+  - canonical: order
+    aliases:
+      - the order
+      - orders
+      - the orders
+      - my order
+      - our order
+      - their order
+      - first order
+      - an order
+  - canonical: experience
+    aliases:
+      - the experience
+      - experiences
+      - the experiences
+      - my experience
+      - our experience
+      - overall experience
+      - great experience
+      - bad experience
+      - good experience
+      - best experience
+      - worst experience
+  - canonical: restaurant
+    aliases:
+      - the restaurant
+      - restaurants
+      - the restaurants
+      - a restaurant
+      - this restaurant
+      - that restaurant
+      - their restaurant
+  - canonical: staff
+    aliases:
+      - the staff
+      - staffs
+      - staff members
+      - all the staff
+      - entire staff
+      - friendly staff
+  - canonical: menu
+    aliases:
+      - the menu
+      - menus
+      - the menus
+      - entire menu
+      - whole menu
+  - canonical: dish
+    aliases:
+      - the dish
+      - dishes
+      - the dishes
+      - main dish
+      - side dish
+  - canonical: price
+    aliases:
+      - the price
+      - prices
+      - the prices
+      - pricing
+      - price point
+  - canonical: quality
+    aliases:
+      - the quality
+      - food quality
+      - service quality
+      - high quality
+      - poor quality
+  - canonical: atmosphere
+    aliases:
+      - the atmosphere
+      - ambiance
+      - the ambiance
+      - ambience
+      - the ambience
+      - vibe
+      - the vibe
+      - vibes
+  - canonical: review
+    aliases:
+      - the review
+      - reviews
+      - the reviews
+      - my review
+      - previous reviews
+      - other reviews
+  - canonical: visit
+    aliases:
+      - the visit
+      - visits
+      - my visit
+      - our visit
+      - first visit
+      - last visit
+      - next visit
+      - return visit
+  - canonical: friend
+    aliases:
+      - my friend
+      - friends
+      - my friends
+      - our friends
+      - a friend
+      - the friends
+      - good friend
+  - canonical: family
+    aliases:
+      - my family
+      - the family
+      - our family
+      - families
+      - whole family
+  - canonical: taste
+    aliases:
+      - the taste
+      - tastes
+      - the tastes
+      - good taste
+      - great taste
+  - canonical: flavor
+    aliases:
+      - the flavor
+      - flavors
+      - flavour
+      - the flavour
+      - flavours
+      - great flavor
+      - rich flavor
+
+  # ── Yelp: temporal words (clean up noisy plurals) ──────────────────
+  - canonical: night
+    aliases:
+      - the night
+      - nights
+      - tonight
+      - last night
+      - friday night
+      - saturday night
+  - canonical: day
+    aliases:
+      - the day
+      - days
+      - today
+      - yesterday
+      - that day
+      - every day
+      - the other day
+  - canonical: week
+    aliases:
+      - the week
+      - weeks
+      - last week
+      - past week
+      - few weeks
+  - canonical: year
+    aliases:
+      - the year
+      - years
+      - past year
+      - last year
+      - this year
+      - few years
+  - canonical: hour
+    aliases:
+      - the hour
+      - hours
+      - an hour
+      - a few hours
+      - two hours
+
+  # ── Yelp: common food items (collapse singular/plural only) ─────────
+  - canonical: drink
+    aliases:
+      - the drink
+      - drinks
+      - the drinks
+      - a drink
+      - our drinks
+  - canonical: table
+    aliases:
+      - the table
+      - tables
+      - our table
+      - my table
+  - canonical: bar
+    aliases:
+      - the bar
+      - bars
+      - the bars
+  - canonical: chicken
+    aliases:
+      - the chicken
+      - chickens
+      - fried chicken
+      - grilled chicken
+      - roast chicken
+  - canonical: pizza
+    aliases:
+      - the pizza
+      - pizzas
+      - the pizzas
+  - canonical: burger
+    aliases:
+      - the burger
+      - burgers
+      - the burgers
+      - cheeseburger
+      - hamburger
+  - canonical: sauce
+    aliases:
+      - the sauce
+      - sauces
+      - the sauces
+  - canonical: bread
+    aliases:
+      - the bread
+      - breads
+  - canonical: salad
+    aliases:
+      - the salad
+      - salads
+      - the salads
+  - canonical: dessert
+    aliases:
+      - the dessert
+      - desserts
+      - the desserts
+  - canonical: wine
+    aliases:
+      - the wine
+      - wines
+      - the wines
+      - glass of wine
+      - red wine
+      - white wine
+  - canonical: beer
+    aliases:
+      - the beer
+      - beers
+      - the beers
+      - a beer
+
+  # ── Yelp: people / generic nouns ──────────────────────────────────
+  - canonical: people
+    aliases:
+      - the people
+      - all the people
+      - other people
+      - most people
+  - canonical: customer
+    aliases:
+      - the customer
+      - customers
+      - the customers
+      - a customer
+      - regular customer
+  - canonical: server
+    aliases:
+      - the server
+      - servers
+      - the servers
+      - our server
+      - my server
+      - waiter
+      - the waiter
+      - waiters
+      - waitress
+      - the waitress
+      - waitresses
+  - canonical: owner
+    aliases:
+      - the owner
+      - owners
+      - the owners
+      - owner operator
+
+  # ── Policy: climate-domain (overlaps with concept_dictionary.yaml) ──
+  - canonical: climate change
+    aliases:
+      - climate changes
+      - a changing climate
+      - changing climate
+      - to climate change
+  - canonical: climate
+    aliases:
+      - the climate
+  - canonical: global warming
+    aliases:
+      - the global warming
+      - warming
+      - the warming
+  - canonical: emissions
+    aliases:
+      - emission
+      - the emissions
+      - greenhouse gas
+      - greenhouse gases
+      - greenhouse gas emissions
+      - ghg emissions
+      - carbon emissions
+  - canonical: adaptation
+    aliases:
+      - climate adaptation
+      - adaptation measures
+      - adaptation plan
+      - national adaptation plan
+  - canonical: resilience
+    aliases:
+      - climate resilience
+      - resilience building
+  - canonical: policy
+    aliases:
+      - the policy
+      - policies
+      - the policies
+      - climate policy
+      - public policy
+  - canonical: government
+    aliases:
+      - the government
+      - governments
+      - state government
+      - federal government
+      - local government
+  - canonical: community
+    aliases:
+      - the community
+      - communities
+      - the communities
+      - local community
+      - local communities
+  - canonical: strategy
+    aliases:
+      - the strategy
+      - strategies
+      - the strategies
+      - climate strategy
+      - adaptation strategy
+  - canonical: risk
+    aliases:
+      - the risk
+      - risks
+      - the risks
+      - climate risk
+      - climate risks
+  - canonical: impact
+    aliases:
+      - the impact
+      - impacts
+      - the impacts
+      - climate impact
+      - climate impacts
+      - environmental impact
+  - canonical: energy
+    aliases:
+      - the energy
+      - clean energy
+      - renewable energy
+      - renewables
+      - renewable energies
+  - canonical: sector
+    aliases:
+      - the sector
+      - sectors
+      - the sectors
+      - each sector
+  - canonical: action
+    aliases:
+      - the action
+      - actions
+      - the actions
+      - climate action
+      - action plan
+
+  # ── Australia-specific (policy corpus is Aus national strategy) ────
+  - canonical: australia
+    aliases:
+      - the australia
+      - australian
+      - australians
+      - across australia

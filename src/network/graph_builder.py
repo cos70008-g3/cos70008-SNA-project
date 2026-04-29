@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from pathlib import Path
 
 import networkx as nx
@@ -47,6 +48,7 @@ class GraphBuilder:
             if G.has_edge(r.source_id, r.target_id):
                 G[r.source_id][r.target_id]["weight"] += r.weight
                 G[r.source_id][r.target_id]["types"].add(r.type)
+                G[r.source_id][r.target_id].setdefault("verbs", Counter()).update(r.verbs)
             else:
                 G.add_edge(
                     r.source_id, r.target_id,
@@ -54,6 +56,7 @@ class GraphBuilder:
                     types={r.type},
                     directed=r.directed,
                     source_docs=list(r.source_docs),
+                    verbs=Counter(r.verbs),
                 )
 
             if not r.directed and not G.has_edge(r.target_id, r.source_id):
@@ -63,6 +66,7 @@ class GraphBuilder:
                     types={r.type},
                     directed=False,
                     source_docs=list(r.source_docs),
+                    verbs=Counter(r.verbs),
                 )
 
         return G
@@ -81,6 +85,12 @@ class GraphBuilder:
                 data["types"] = ",".join(data["types"])
             if "source_docs" in data:
                 data["source_docs"] = ",".join(str(d) for d in data["source_docs"])
+            if "verbs" in data:
+                verbs_counter = data["verbs"] or Counter()
+                top = verbs_counter.most_common(1)
+                data["top_verb"] = top[0][0] if top else ""
+                data["verb_count"] = int(top[0][1]) if top else 0
+                data["verbs"] = ",".join(v for v, _ in verbs_counter.most_common())
         for _, data in H.nodes(data=True):
             if "source_docs" in data:
                 data["source_docs"] = ",".join(str(d) for d in data["source_docs"])
@@ -93,6 +103,8 @@ class GraphBuilder:
         """Export edge list as CSV."""
         rows = []
         for u, v, data in G.edges(data=True):
+            verbs_counter: Counter = data.get("verbs") or Counter()
+            top = verbs_counter.most_common(1)
             row = {
                 "source": G.nodes[u].get("label", u),
                 "target": G.nodes[v].get("label", v),
@@ -100,6 +112,8 @@ class GraphBuilder:
                 "types": ",".join(data.get("types", set())),
                 "source_type_from": G.nodes[u].get("source_type", "unknown"),
                 "source_type_to": G.nodes[v].get("source_type", "unknown"),
+                "top_verb": top[0][0] if top else "",
+                "verb_count": int(top[0][1]) if top else 0,
             }
             if "sentiment" in data:
                 row["sentiment"] = data["sentiment"]

@@ -13,13 +13,20 @@ from src.preprocessing.tokeniser import ProcessedDocument
 
 @dataclass
 class Relationship:
-    """A typed, weighted relationship between two concepts."""
+    """A typed, weighted relationship between two concepts.
+
+    ``verbs`` is a Counter of verb lemmas observed when this relationship was
+    extracted via dependency parsing. Co-occurrence-only relationships (type
+    = ``ASSOCIATION``) leave this empty. Downstream code uses it to pick a
+    ``top_verb`` for display and edge embeddings.
+    """
     source_id: str
     target_id: str
     type: str          # ASSOCIATION, ACTION, CAUSATION
     weight: float = 1.0
     directed: bool = False
     source_docs: set[str] = field(default_factory=set)
+    verbs: Counter = field(default_factory=Counter)
 
 
 class RelationshipExtractor:
@@ -48,6 +55,7 @@ class RelationshipExtractor:
 
         edge_counter: Counter[tuple[str, str, str]] = Counter()
         edge_docs: dict[tuple[str, str, str], set[str]] = {}
+        edge_verbs: dict[tuple[str, str, str], Counter] = {}
 
         for doc in documents:
             if self.use_cooccurrence:
@@ -56,7 +64,8 @@ class RelationshipExtractor:
                 )
             if self.use_dependency:
                 self._extract_dependency(
-                    doc, concept_labels, concept_id_map, edge_counter, edge_docs
+                    doc, concept_labels, concept_id_map,
+                    edge_counter, edge_docs, edge_verbs,
                 )
 
         relationships = []
@@ -68,6 +77,7 @@ class RelationshipExtractor:
                 weight=weight,
                 directed=(rtype != "ASSOCIATION"),
                 source_docs=edge_docs.get((src, tgt, rtype), set()),
+                verbs=edge_verbs.get((src, tgt, rtype), Counter()),
             ))
 
         relationships.sort(key=lambda r: r.weight, reverse=True)
@@ -100,6 +110,7 @@ class RelationshipExtractor:
         id_map: dict[str, str],
         counter: Counter,
         docs_map: dict,
+        verbs_map: dict,
     ) -> None:
         """Extract SVO triples from dependency parses and classify by verb type."""
         spacy_doc = doc.spacy_doc
@@ -138,6 +149,7 @@ class RelationshipExtractor:
                         key = (id_map[subj_text], id_map[obj_text], rtype)
                         counter[key] += 1
                         docs_map.setdefault(key, set()).add(doc.doc_id)
+                        verbs_map.setdefault(key, Counter())[verb_lemma] += 1
 
     @staticmethod
     def _match_concept(token, concept_labels: set[str]) -> str | None:

@@ -2,6 +2,13 @@
 papers/
 project_brief/
 Research_Ethics/
+Innovation_concept/
+
+# IDE / editor state
+.cursor/
+
+# Local helper scripts with credentials flow
+push_with_token.sh
 
 # Virtual environment — never commit (includes large site-packages e.g. Altair datasets)
 venv/
@@ -29,6 +36,12 @@ build/
 
 # Generated outputs (regenerate with pipeline.py)
 results/
+
+# Neo4j Docker volume mounts (data / logs / plugins — local DB state)
+.neo4j/
+
+# Local environment overrides
+.env
 
 # OS / editors
 .DS_Store

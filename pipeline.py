@@ -32,12 +32,14 @@ def main(args: argparse.Namespace) -> None:
     t0 = time.time()
 
     # ── Stage 1: Ingestion ─────────────────────────────────────────
-    print("[1/6] Ingesting data...")
+    print("[1/8] Ingesting data...")
     from src.preprocessing.cleaner import clean_text
     from src.preprocessing.tokeniser import SpacyTokeniser
 
     tokeniser = SpacyTokeniser()
     documents = []
+    pages: list = []
+    df = None
 
     if args.source in ("policy", "combined"):
         from src.ingest.pdf_reader import read_policy_pdf, pages_to_document
@@ -68,11 +70,11 @@ def main(args: argparse.Namespace) -> None:
 
     # ── Stage 2: Preprocessing summary ─────────────────────────────
     total_sents = sum(len(d.sentences) for d in documents)
-    print(f"\n[2/6] Preprocessing complete")
+    print(f"\n[2/8] Preprocessing complete")
     print(f"       {len(documents)} document(s), {total_sents} sentences")
 
     # ── Stage 3: Extraction ────────────────────────────────────────
-    print("[3/6] Extracting concepts and relationships...")
+    print("[3/8] Extracting concepts and relationships...")
     from src.extraction.concept_extractor import ConceptExtractor
     from src.extraction.relationship_extractor import RelationshipExtractor
 
@@ -95,7 +97,7 @@ def main(args: argparse.Namespace) -> None:
     print(f"       {len(relationships)} relationships extracted")
 
     # ── Stage 4: Network Construction ──────────────────────────────
-    print("[4/6] Building network...")
+    print("[4/8] Building network...")
     from src.network.graph_builder import GraphBuilder
 
     builder = GraphBuilder(min_edge_weight=args.min_weight)
@@ -117,7 +119,7 @@ def main(args: argparse.Namespace) -> None:
     builder.export_node_csv(G, output_dir / "nodes.csv")
 
     # ── Stage 5: Analysis ──────────────────────────────────────────
-    print("[5/6] Analysing network...")
+    print("[5/8] Analysing network...")
     from src.network.graph_analysis import GraphAnalyser
 
     analyser = GraphAnalyser(G)
@@ -172,8 +174,41 @@ def main(args: argparse.Namespace) -> None:
         with open(output_dir / "cross_source_summary.json", "w") as f:
             json.dump(comparison, f, indent=2)
 
+    # ── Optional: push to Neo4j ────────────────────────────────────
+    if args.neo4j:
+        print("\n       Pushing graph to Neo4j...")
+        try:
+            from src.extensions.neo4j_store import (
+                Neo4jStore,
+                Neo4jUnavailableError,
+            )
+            with Neo4jStore.from_config() as _store:
+                counts = _store.push_graph(
+                    G,
+                    partition=partition,
+                    centrality_df=centrality_df,
+                    source_label=args.source,
+                    reset=args.neo4j_reset,
+                )
+                embedded = _store.embed_and_store(G, source_label=args.source)
+                edge_embedded = _store.embed_edges(
+                    G,
+                    source_label=args.source,
+                    top_n_association=args.edge_embed_top_n,
+                )
+            print(
+                f"         Neo4j: {counts['nodes']} nodes, {counts['edges']} edges"
+                + (f", {embedded} node embeddings" if embedded else "")
+                + (f", {edge_embedded} edge embeddings" if edge_embedded else "")
+                + f" under source_label='{args.source}'"
+            )
+        except Neo4jUnavailableError as e:
+            print(f"         Neo4j unavailable: {e}")
+        except Exception as e:
+            print(f"         Neo4j push failed: {e}")
+
     # ── Stage 6: Visualisation ─────────────────────────────────────
-    print("\n[6/6] Generating visualisations...")
+    print("\n[6/8] Generating visualisations...")
     from src.visualisation.static_viz import StaticVisualiser
     from src.visualisation.interactive_viz import InteractiveVisualiser
 
@@ -196,12 +231,149 @@ def main(args: argparse.Namespace) -> None:
         colour_edges_by_sentiment=args.sentiment,
     )
 
+    # ── Stage 7: Temporal comparison (optional) ────────────────────
+    if args.temporal and args.temporal > 1:
+        print(f"\n[7/8] Temporal comparison ({args.temporal} slices)...")
+        from src.extensions.temporal import TemporalAnalyser
+        from src.extensions.temporal_slicing import (
+            policy_pages_to_temporal_slices,
+            yelp_reviews_to_year_slices,
+        )
+        from src.extraction.concept_extractor import ConceptExtractor as _CE
+        from src.network.graph_builder import GraphBuilder as _GB
+
+        slices: list = []
+        if args.source in ("policy", "combined") and pages:
+            slices.extend(
+                policy_pages_to_temporal_slices(
+                    pages, tokeniser, n_chunks=args.temporal
+                )
+            )
+        if args.source in ("yelp", "combined") and df is not None:
+            slices.extend(
+                yelp_reviews_to_year_slices(
+                    df, tokeniser, sample_per_year=args.yelp_sample or 150
+                )
+            )
+
+        if len(slices) >= 2:
+            ta = TemporalAnalyser(
+                concept_extractor=_CE(min_freq=1),
+                graph_builder=_GB(min_edge_weight=1),
+            )
+            tslices = ta.build_slices(slices)
+            summary_df = ta.slice_summary(tslices)
+            pairwise_df = ta.comparison_table(tslices)
+            summary_df.to_csv(output_dir / "temporal_slice_summary.csv", index=False)
+            pairwise_df.to_csv(output_dir / "temporal_pairwise.csv", index=False)
+            print(f"       {len(tslices)} slices built; summary saved")
+            for _, row in summary_df.iterrows():
+                print(
+                    f"         {row['slice']}: {row['nodes']} nodes, "
+                    f"{row['edges']} edges (top: {row['top_concept']})"
+                )
+        else:
+            print("       Not enough slices (need >= 2); skipping.")
+    else:
+        print("\n[7/8] Temporal comparison skipped (use --temporal N to enable)")
+
+    # ── Stage 8: Conversational exploration (chatbot) ──────────────
+    if args.chat:
+        print("\n[8/8] Starting chatbot (Ctrl+D or 'exit' to quit)...")
+        try:
+            from src.extensions.chatbot import GraphChatbot, build_default_provider
+
+            gc = None
+            vector_store = None
+            edge_vector_store = None
+
+            use_neo4j = args.neo4j
+            if use_neo4j:
+                try:
+                    from src.extensions.neo4j_store import Neo4jStore
+                    from src.extensions.neo4j_graph_context import Neo4jGraphContext
+                    from src.extensions.neo4j_vectorstore import Neo4jVectorStore
+                    from src.extensions.neo4j_edge_vectorstore import (
+                        Neo4jEdgeVectorStore,
+                    )
+
+                    store = Neo4jStore.from_config()
+                    store.connect()
+                    gc = Neo4jGraphContext(store, source_label=args.source)
+                    vector_store = Neo4jVectorStore(store, source_label=args.source)
+                    edge_vector_store = Neo4jEdgeVectorStore(
+                        store, source_label=args.source
+                    )
+                    if not getattr(edge_vector_store, "available", False):
+                        edge_vector_store = None
+                    print("       Backend: Neo4j (Cypher + native vector index)")
+                except Exception as e:
+                    print(f"       Neo4j backend unavailable ({e}); falling back.")
+                    gc = None
+
+            if gc is None:
+                from src.extensions.graph_context import GraphContext
+                from src.extensions.graph_vectorstore import (
+                    GraphEdgeVectorStore,
+                    GraphVectorStore,
+                )
+
+                gc = GraphContext(
+                    G=G,
+                    partition=partition,
+                    centrality_df=centrality_df,
+                    source_label=args.source,
+                )
+                vector_store = GraphVectorStore(gc)
+                edge_vector_store = GraphEdgeVectorStore(
+                    gc, top_n_association=args.edge_embed_top_n
+                )
+                if not getattr(edge_vector_store, "available", False):
+                    edge_vector_store = None
+                print("       Backend: in-memory NetworkX + FAISS")
+
+            provider = build_default_provider()
+            bot = GraphChatbot(
+                graph_context=gc,
+                llm_provider=provider,
+                vector_store=vector_store,
+                edge_vector_store=edge_vector_store,
+            )
+            _run_chat_loop(bot)
+        except Exception as e:
+            print(f"       Chatbot unavailable: {e}")
+    else:
+        print("\n[8/8] Chatbot skipped (use --chat to start an interactive session)")
+
     elapsed = time.time() - t0
     print(f"\n{'='*60}")
     print(f"  Pipeline complete in {elapsed:.1f}s")
     print(f"  Results saved to: {output_dir}")
     print(f"  Interactive network: {html_path}")
     print(f"{'='*60}")
+
+
+def _run_chat_loop(bot) -> None:
+    """Simple REPL for Stage 8 (chatbot)."""
+    print("\n" + "=" * 60)
+    print("  Graph Chatbot — ask questions about the conceptual network")
+    print("=" * 60)
+    while True:
+        try:
+            q = input("\nYou: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nGoodbye.")
+            break
+        if not q:
+            continue
+        if q.lower() in {"exit", "quit", ":q"}:
+            print("Goodbye.")
+            break
+        try:
+            answer = bot.ask(q)
+        except Exception as e:
+            answer = f"(error: {e})"
+        print(f"\nBot: {answer}")
 
 
 def parse_args() -> argparse.Namespace:
@@ -247,6 +419,40 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default="",
         help="YAML path for user-defined concepts, or the keyword 'default' for bundled config; omit to disable",
+    )
+    parser.add_argument(
+        "--temporal",
+        type=int,
+        default=0,
+        metavar="N",
+        help="Run temporal comparison with N slices (policy=page chunks, yelp=by year). "
+             "Writes temporal_slice_summary.csv and temporal_pairwise.csv. 0 = disabled.",
+    )
+    parser.add_argument(
+        "--chat",
+        action="store_true",
+        help="After Stage 7, enter an interactive chatbot (Stage 8) over the knowledge graph.",
+    )
+    parser.add_argument(
+        "--neo4j",
+        action="store_true",
+        help="Push the built network to a local Neo4j instance (configure via NEO4J_* env vars) "
+             "and route the --chat backend through Cypher + the native vector index.",
+    )
+    parser.add_argument(
+        "--neo4j-reset",
+        action="store_true",
+        help="Delete existing Concept nodes with the current --source label before pushing. "
+             "Useful when iterating to keep the graph deterministic.",
+    )
+    parser.add_argument(
+        "--edge-embed-top-n",
+        type=int,
+        default=2000,
+        metavar="N",
+        help="Edge-level semantic search: embed all verb-bearing edges plus the "
+             "top-N ASSOCIATION edges by weight (default 2000). Applies to both "
+             "the Neo4j push and the in-memory chatbot backend.",
     )
     return parser.parse_args()
 
