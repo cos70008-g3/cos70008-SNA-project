@@ -17,6 +17,7 @@ import pandas as pd
 import streamlit as st
 
 from src import config
+from src.extensions.neo4j_data_view import render_neo4j_data_page
 
 st.set_page_config(page_title="Text-to-Network Explorer", layout="wide")
 
@@ -276,7 +277,46 @@ def _build_chatbot(
     )
 
 
+def _build_partition_from_graph(G) -> dict[str, int]:
+    return {n: int(G.nodes[n].get("community", -1)) for n in G.nodes()}
+
+
+def _render_pyvis_subgraph(G_sub, *, title: str, source_key: str, apply_sentiment: bool, height: int = 600):
+    """Render a small NetworkX subgraph as a PyVis canvas embedded in Streamlit."""
+    if G_sub.number_of_nodes() == 0:
+        st.info("No nodes to display.")
+        return
+    import tempfile
+    from src.visualisation.interactive_viz import InteractiveVisualiser
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        iv = InteractiveVisualiser(tmpdir)
+        path = iv.create_interactive_network(
+            G_sub,
+            partition=_build_partition_from_graph(G_sub),
+            # Disable the visualiser's PageRank pruning — we already control
+            # subgraph size via the reader's depth/min_weight/top_n params.
+            top_n=max(G_sub.number_of_nodes(), 1),
+            title=title,
+            colour_by_source=(source_key == "combined"),
+            colour_edges_by_sentiment=apply_sentiment,
+        )
+        st.components.v1.html(path.read_text(), height=height, scrolling=True)
+
+
+
+
+
 def main():
+    # ── View dispatch ────────────────────────────────────────────────
+    # The View radio is rendered at the bottom of each branch's sidebar
+    # so the user sees the existing Configuration above it. We read its
+    # current value from session_state here and dispatch *before*
+    # running any heavy work like ``load_pipeline``.
+    if st.session_state.get("view_mode", "Main Dashboard") == "Neo4j Data":
+        render_neo4j_data_page()
+        return  # skip the Main Dashboard rendering (incl. load_pipeline)
+
     st.title("Text-to-Network Explorer")
     st.markdown("Transform unstructured text into conceptual networks for SNA analysis.")
 
@@ -310,6 +350,16 @@ def main():
             "Sentiment-weighted edges (VADER / TextBlob)",
             value=False,
             help="Annotate edges using sentence sentiment where endpoint concepts co-occur.",
+        )
+
+        # View selector at the bottom of the sidebar. Switching here
+        # writes ``view_mode`` into session_state, and on the next rerun
+        # the dispatch at the top of ``main()`` routes to the right view.
+        st.divider()
+        st.radio(
+            "View",
+            ["Main Dashboard", "Neo4j Data"],
+            key="view_mode",
         )
 
     methods_tuple = tuple(sorted(methods))

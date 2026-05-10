@@ -8,6 +8,7 @@ pandas>=2.1
 matplotlib>=3.8
 seaborn>=0.13
 pyvis>=0.3.2
+streamlit-agraph>=0.0.45
 textblob>=0.18
 vaderSentiment>=3.3.2
 streamlit>=1.30
@@ -27,4 +28,10 @@ faiss-cpu>=1.7
 # ── Optional Neo4j backend ─────────────────────────────────────────
 # Enable with `docker compose up -d` + NEO4J_PASSWORD env var.
 neo4j>=5.20
+
+# ── HTTP API (src/api/server.py) ───────────────────────────────────
+# Exposes Neo4jGraphReader over HTTP with auto-generated Swagger docs.
+# Run with `uvicorn src.api.server:app --reload`.
+fastapi>=0.110
+uvicorn[standard]>=0.27
 
